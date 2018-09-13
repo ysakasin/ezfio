@@ -8,19 +8,19 @@
 # it under the terms of the GNU General Public License as published by
 # the Free Software Foundation, either version 2 of the License, or
 # (at your option) any later version.
-# 
+#
 # ezfio is distributed in the hope that it will be useful,
 # but WITHOUT ANY WARRANTY; without even the implied warranty of
 # MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 # GNU General Public License for more details.
-# 
+#
 # You should have received a copy of the GNU General Public License
 # along with ezfio.  If not, see <http://www.gnu.org/licenses/>.
 # ------------------------------------------------------------------------
 #
 # Usage:   ./ezfio.py -d </dev/node> [-u <100..1>]
 # Example: ./ezfio.py -d /dev/nvme0n1 -u 100
-# 
+#
 # This script requires root privileges so must be run as "root" or
 # via "sudo ./ezfio.py"
 #
@@ -239,7 +239,7 @@ def VerifyContinue():
 
 def CollectDriveInfo():
     """Get important device information, exit if not possible."""
-    global physDriveGiB, physDriveGB, physDriveBase, testcapacity
+    global physDriveMiB, physDriveMB, physDriveBase, testcapacity
     global model, serial, physDrive
     # We absolutely need this information
     try:
@@ -247,9 +247,9 @@ def CollectDriveInfo():
         code, physDriveBytes, err=Run(['blockdev', '--getsize64', physDrive])
         if code != 0:
             raise Exception("Can't get drive size for " + physDrive)
-        physDriveGB = (long(physDriveBytes))/(1000 * 1000 * 1000)
-        physDriveGiB = (long(physDriveBytes))/(1024 * 1024 * 1024)
-        testcapacity = (physDriveGiB * utilization) / 100
+        physDriveMB = (long(physDriveBytes))/(1000 * 1000)
+        physDriveMiB = (long(physDriveBytes))/(1024 * 1024)
+        testcapacity = (physDriveMiB * utilization) / 100
     except:
         print "ERROR: Can't get '" + physDrive + "' size. ",
         print "Incorrect device name?"
@@ -273,13 +273,13 @@ def CollectDriveInfo():
 
 def CSVInfoHeader(f):
     """Headers to the CSV file (ending up in the ODS at the test end)."""
-    global physDrive, model, serial, physDriveGiB, testcapacity
+    global physDrive, model, serial, physDriveMiB, testcapacity
     global cpu, cpuCores, cpuFreqMHz, uname
     AppendFile("Drive," + str(physDrive), f)
     AppendFile("Model," + str(model), f)
     AppendFile("Serial," + str(serial), f)
-    AppendFile("AvailCapacity," + str(physDriveGiB) + ",GiB", f)
-    AppendFile("TestedCapacity," + str(testcapacity) + ",GiB", f)
+    AppendFile("AvailCapacity," + str(physDriveMiB) + ",MiB", f)
+    AppendFile("TestedCapacity," + str(testcapacity) + ",MiB", f)
     AppendFile("CPU," + str(cpu), f)
     AppendFile("Cores," + str(cpuCores), f)
     AppendFile("Frequency," + str(cpuFreqMHz), f)
@@ -296,7 +296,7 @@ def SetupFiles():
     ds = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 
     # The unique suffix we generate for all output files
-    suffix  = str(physDriveGB) + "GB_" + str(cpuCores) + "cores_"
+    suffix  = str(physDriveMB) + "MB_" + str(cpuCores) + "cores_"
     suffix += str(cpuFreqMHz) + "MHz_" + physDriveBase + "_"
     suffix += socket.gethostname() + "_" + ds
 
@@ -361,9 +361,9 @@ def SequentialConditioning():
     """Sequentially fill the complete capacity of the drive once."""
     # Note that we can't use regular test runner because this test needs
     # to run for a specified # of bytes, not a specified # of seconds.
-    cmdline = [fio, "--name=SeqCond", "--readwrite=write", "--bs=128k", 
-               "--ioengine=libaio", "--iodepth=64", "--direct=1", 
-               "--filename=" + physDrive, "--size=" + str(testcapacity) + "G",
+    cmdline = [fio, "--name=SeqCond", "--readwrite=write", "--bs=128k",
+               "--ioengine=libaio", "--iodepth=64", "--direct=1",
+               "--filename=" + physDrive, "--size=" + str(testcapacity) + "M",
                "--thread"]
     code, out, err = Run(cmdline)
     if code != 0:
@@ -378,7 +378,7 @@ def RandomConditioning():
     cmdline = [fio, "--name=RandCond", "--readwrite=randwrite", "--bs=4k",
                "--invalidate=1", "--end_fsync=0", "--group_reporting",
                "--direct=1", "--filename=" + str(physDrive),
-               "--size=" + str(testcapacity) + "G", "--ioengine=libaio",
+               "--size=" + str(testcapacity) + "M", "--ioengine=libaio",
                "--iodepth=256", "--norandommap", "--randrepeat=0", "--thread"]
     code, out, err = Run(cmdline)
     if code != 0:
@@ -464,11 +464,11 @@ def RunTest(iops_log, seqrand, wmix, bs, threads, iodepth, runtime):
 
     # Output file names
     testfile = TestName(seqrand, wmix, bs, threads, iodepth)
-    
+
     if seqrand == "Seq":
         rw = "rw"
     else:
-        rw = "randrw" 
+        rw = "randrw"
 
     if iops_log:
         o={}
@@ -480,19 +480,19 @@ def RunTest(iops_log, seqrand, wmix, bs, threads, iodepth, runtime):
                "--rwmixwrite=" + str(wmix), "--bs=" + str(bs),
                "--invalidate=1", "--end_fsync=0", "--group_reporting",
                "--direct=1", "--filename=" + str(physDrive),
-               "--size=" + str(testcapacity) + "G", "--time_based",
+               "--size=" + str(testcapacity) + "M", "--time_based",
                "--runtime=" + str(runtime), "--ioengine=libaio",
                "--numjobs=" + str(threads), "--iodepth=" + str(iodepth),
                "--norandommap", "--randrepeat=0", "--thread",
                "--output-format=" + str(fioOutputFormat), "--exitall"]
-    
+
     AppendFile(" ".join(cmdline), testfile)
 
     # There are some NVME drives with 4k physical and logical out there.
     # Check that we can actually do this size IO, OTW return 0 for all
     skiptest = False
     code, out, err = Run(['blockdev', '--getiomin', str(physDrive)])
-    if code == 0: 
+    if code == 0:
         iomin = int(out.split("\n")[0])
         if int(bs) < iomin: skiptest = True
     # Silently ignore failure to return min block size, FIO will fail and
@@ -748,7 +748,7 @@ def RunAllTests():
         except:
             print "\nUnexpected error while running FIO job."
             raise
-        
+
     print "*" * len(fmtstr.format("", "", "", ""))
     print "ezFio test parameters:\n"
 
@@ -756,8 +756,8 @@ def RunAllTests():
     print fmtinfo.format("Drive", str(physDrive))
     print fmtinfo.format("Model", str(model))
     print fmtinfo.format("Serial", str(serial))
-    print fmtinfo.format("AvailCapacity", str(physDriveGiB) + " GiB")
-    print fmtinfo.format("TestedCapacity", str(testcapacity) + " GiB")
+    print fmtinfo.format("AvailCapacity", str(physDriveMiB) + " MiB")
+    print fmtinfo.format("TestedCapacity", str(testcapacity) + " MiB")
     print fmtinfo.format("CPU", str(cpu))
     print fmtinfo.format("Cores", str(cpuCores))
     print fmtinfo.format("Frequency", str(cpuFreqMHz))
@@ -1014,10 +1014,10 @@ cpuCores = ""    # # of cores (including virtual)
 cpuFreqMHz = ""  # "Nominal" speed of CPU
 uname = ""       # Kernel name/info
 
-physDriveGiB = ""  # Disk size in GiB (2^n)
-physDriveGB = ""   # Disk size in GB (10^n)
+physDriveMiB = ""  # Disk size in MiB (2^n)
+physDriveMB = ""   # Disk size in MB (10^n)
 physDriveBase = "" # Basename (ex: nvme0n1)
-testcapacity = ""  # Total GiB to test
+testcapacity = ""  # Total MiB to test
 model = ""         # Drive model name
 serial = ""        # Drive serial number
 
@@ -1056,4 +1056,3 @@ if __name__ == "__main__":
     GenerateResultODS()
 
     print "\nCOMPLETED!\nSpreadsheet file: " + odsdest
-
